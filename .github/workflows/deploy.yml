@@ -113,7 +113,7 @@ jobs:
     if: github.ref == 'refs/heads/main'
     environment:
       name: production
-      url: http://20.76.75.231
+      url: http://<EXTERNAL_IP>
 
     steps:
       - name: Checkout code
@@ -183,7 +183,7 @@ jobs:
             --set image.tag=${{ github.sha }} \
             --namespace ${{ env.NAMESPACE }} \
             --wait \
-            --timeout 5m
+            --timeout 10m
 
       - name: Wait for Deployment
         run: |

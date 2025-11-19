@@ -1,0 +1,20 @@
+apiVersion: traefik.containo.us/v1alpha1
+kind: Middleware
+metadata:
+  name: rate-limit
+  namespace: {{ .Values.namespace }}
+spec:
+  rateLimit:
+    average: 100
+    burst: 50
+    period: 1m
+---
+apiVersion: traefik.containo.us/v1alpha1
+kind: Middleware
+metadata:
+  name: ip-whitelist
+  namespace: {{ .Values.namespace }}
+spec:
+  ipWhiteList:
+    sourceRange:
+      - 0.0.0.0/0  # Allow all - update if needed

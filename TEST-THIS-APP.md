@@ -1,37 +1,37 @@
 # Testing Guide
 
-**External IP**: `20.76.75.231`
+**External IP**: `<EXTERNAL_IP>`
 
 ## API Tests
 
 ```bash
 # Health check
-curl http://20.76.75.231/api/health
+curl http://<EXTERNAL_IP>/api/health
 # Expected: {"status":"ok"}
 
 # Mirror transformation (required example)
-curl "http://20.76.75.231/api/mirror?word=fOoBar25"
+curl "http://<EXTERNAL_IP>/api/mirror?word=fOoBar25"
 # Expected: {"transformed":"52RAbOoF"}
 
 # View history
-curl http://20.76.75.231/api/history
+curl http://<EXTERNAL_IP>/api/history
 ```
 
 ## More Examples
 
 ```bash
-curl "http://20.76.75.231/api/mirror?word=hello"
+curl "http://<EXTERNAL_IP>/api/mirror?word=hello"
 # Expected: {"transformed":"OLLEH"}
 
-curl "http://20.76.75.231/api/mirror?word=ABC"
+curl "http://<EXTERNAL_IP>/api/mirror?word=ABC"
 # Expected: {"transformed":"cba"}
 ```
 
 ## Browser Testing
 
-- http://20.76.75.231/api/health
-- http://20.76.75.231/api/mirror?word=fOoBar25
-- http://20.76.75.231/api/history
+- http://<EXTERNAL_IP>/api/health
+- http://<EXTERNAL_IP>/api/mirror?word=fOoBar25
+- http://<EXTERNAL_IP>/api/history
 
 ## Infrastructure Check
 
