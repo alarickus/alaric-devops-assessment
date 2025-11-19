@@ -1,5 +1,3 @@
-# CloudNativePG PostgreSQL Cluster
-# Creates a highly available PostgreSQL cluster with 3 instances
 
 apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
@@ -9,13 +7,10 @@ metadata:
   labels:
     app: mirror-db
 spec:
-  # Number of PostgreSQL instances (1 primary + 1 replica for HA)
   instances: 2
   
-  # PostgreSQL version
   imageName: ghcr.io/cloudnative-pg/postgresql:14.10
   
-  # PostgreSQL configuration - Lightweight
   postgresql:
     parameters:
       max_connections: "100"            # Reduced from 200
@@ -31,7 +26,6 @@ spec:
       min_wal_size: "512MB"             # Reduced from 1GB
       max_wal_size: "2GB"               # Reduced from 4GB
   
-  # Bootstrap configuration
   bootstrap:
     initdb:
       database: mirrordb
@@ -49,12 +43,10 @@ spec:
           );
         - CREATE INDEX IF NOT EXISTS idx_mirror_words_original ON mirror_words(original_word);
   
-  # Storage configuration - Lightweight
   storage:
     size: 5Gi  # Reduced from 10Gi
     storageClass: managed-premium  # Azure Premium SSD for better performance
   
-  # Resource limits - Lightweight
   resources:
     requests:
       memory: "256Mi"  # Reduced from 512Mi
@@ -63,54 +55,18 @@ spec:
       memory: "512Mi"  # Reduced from 1Gi
       cpu: "500m"      # Reduced from 1000m
   
-  # High Availability configuration - Lightweight (2 instances)
   primaryUpdateStrategy: unsupervised
   maxSyncReplicas: 1  # Only 1 replica total
   minSyncReplicas: 0  # Allow async for better performance
 
-  # Backup configuration - commented out for initial deployment
-  # backup:
-  #   barmanObjectStore:
-  #     destinationPath: "https://<storage-account>.blob.core.windows.net/<container>/mirror-db"
-  #     azureCredentials:
-  #       storageAccount:
-  #         name: azure-backup-creds
-  #         key: storage-account
-  #       storageKey:
-  #         name: azure-backup-creds
-  #         key: storage-key
-  #     wal:
-  #       compression: gzip
-  #       maxParallel: 2
-  #   retentionPolicy: "30d"
   
-  # Superuser secret (for admin access)
   superuserSecret:
     name: db-superuser
   
-  # Enable logical replication (optional, for advanced use cases)
-  # postgresql:
-  #   parameters:
-  #     wal_level: "logical"
 
-  # Certificates (TLS) - commented out, CNPG will auto-generate
-  # certificates:
-  #   serverTLSSecret: mirror-db-server-cert
-  #   serverCASecret: mirror-db-ca-cert
-  #   clientCASecret: mirror-db-ca-cert
-  #   replicationTLSSecret: mirror-db-replication-cert
 
 ---
-# Service for read-write connections (primary)
-# This is automatically created by CNPG operator
-# Available at: mirror-db-rw.mirror-app.svc.cluster.local:5432
 
 ---
-# Service for read-only connections (replicas)
-# This is automatically created by CNPG operator  
-# Available at: mirror-db-ro.mirror-app.svc.cluster.local:5432
 
 ---
-# Service for read connections (all instances)
-# This is automatically created by CNPG operator
-# Available at: mirror-db-r.mirror-app.svc.cluster.local:5432
