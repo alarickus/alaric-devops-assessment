@@ -9,13 +9,11 @@ from psycopg2.extras import RealDictCursor
 import os
 import logging
 
-# Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
-# Database configuration
 DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://postgres:postgres@localhost:5432/mirrordb')
 
 def get_db_connection():
@@ -33,7 +31,6 @@ def init_db():
         conn = get_db_connection()
         cur = conn.cursor()
         
-        # Create table for storing mirror transformations
         cur.execute("""
             CREATE TABLE IF NOT EXISTS mirror_words (
                 id SERIAL PRIMARY KEY,
@@ -43,7 +40,6 @@ def init_db():
             );
         """)
         
-        # Create index for better query performance
         cur.execute("""
             CREATE INDEX IF NOT EXISTS idx_mirror_words_original 
             ON mirror_words(original_word);
@@ -55,7 +51,6 @@ def init_db():
         logger.info("Database initialized successfully")
     except Exception as e:
         logger.error(f"Database initialization error: {e}")
-        # Don't fail app startup if DB is not available yet
         pass
 
 def transform_word(word):
@@ -67,10 +62,8 @@ def transform_word(word):
     
     Example: 'fOoBar25' -> 'FOObAR25' -> '52RAbOoF'
     """
-    # Step 1 & 2: Swap case
     swapped = word.swapcase()
     
-    # Step 3: Reverse the string
     reversed_word = swapped[::-1]
     
     return reversed_word
@@ -110,22 +103,17 @@ def mirror_word():
     Query parameter: word
     Returns: JSON with transformed word
     """
-    # Get the word from query parameter
     word = request.args.get('word', '')
     
-    # Validate input
     if not word:
         return jsonify({
             "error": "Missing 'word' query parameter"
         }), 400
     
-    # Transform the word
     transformed = transform_word(word)
     
-    # Save to database
     save_to_database(word, transformed)
     
-    # Return response
     return jsonify({
         "transformed": transformed
     }), 200
@@ -151,7 +139,6 @@ def get_history():
         cur.close()
         conn.close()
         
-        # Convert datetime to string for JSON serialization
         for record in records:
             if record['created_at']:
                 record['created_at'] = record['created_at'].isoformat()
@@ -172,9 +159,7 @@ def internal_error(error):
     return jsonify({"error": "Internal server error"}), 500
 
 if __name__ == '__main__':
-    # Initialize database on startup
     init_db()
     
-    # Run the application
     port = int(os.getenv('PORT', 4004))
     app.run(host='0.0.0.0', port=port, debug=False)
