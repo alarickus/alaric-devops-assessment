@@ -31,6 +31,14 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Cache pip dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('app/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -97,13 +105,6 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Verify image in ACR
-        run: |
-          echo "Verifying image in ACR..."
-          az acr repository show-tags \
-            --name ${{ env.ACR_NAME }} \
-            --repository ${{ env.IMAGE_NAME }} \
-            --output table
 
   # Job 3: Deploy to AKS
   deploy:
@@ -140,7 +141,19 @@ jobs:
         run: |
           kubectl create namespace ${{ env.NAMESPACE }} --dry-run=client -o yaml | kubectl apply -f -
 
+      - name: Check if database exists
+        id: check_db
+        run: |
+          if kubectl get cluster mirror-db -n ${{ env.NAMESPACE }} 2>/dev/null; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "Database cluster already exists, skipping deployment"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "Database cluster not found, will deploy"
+          fi
+
       - name: Deploy Database (CNPG)
+        if: steps.check_db.outputs.exists == 'false'
         run: |
           echo "Deploying PostgreSQL cluster..."
           kubectl apply -f k8s/cnpg/02-credentials.yaml
@@ -148,13 +161,15 @@ jobs:
           kubectl apply -f k8s/cnpg/03-scheduled-backup.yaml
 
       - name: Wait for Database Cluster
+        if: steps.check_db.outputs.exists == 'false'
         run: |
           echo "Waiting for CNPG cluster to be ready..."
-          kubectl wait --for=condition=Ready cluster/mirror-db -n ${{ env.NAMESPACE }} --timeout=600s || echo "CNPG cluster still initializing"
+          kubectl wait --for=condition=Ready cluster/mirror-db -n ${{ env.NAMESPACE }} --timeout=300s
 
       - name: Create Database Table
+        if: steps.check_db.outputs.exists == 'false'
         run: |
-          echo "Creating database table if not exists..."
+          echo "Creating database table..."
           kubectl run psql-init --image=postgres:14 --rm -i --restart=Never \
             -n ${{ env.NAMESPACE }} \
             --env="PGPASSWORD=AppUser_SecurePassword123!" \
@@ -165,16 +180,7 @@ jobs:
               transformed_word VARCHAR(255) NOT NULL,
               created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
-            CREATE INDEX IF NOT EXISTS idx_mirror_words_original ON mirror_words(original_word);" \
-            || echo "Table creation attempted"
-
-      - name: Verify Traefik Ingress
-        run: |
-          echo "Deploying Traefik CRDs..."
-          kubectl apply -f https://raw.githubusercontent.com/traefik/traefik/v2.10/docs/content/reference/dynamic-configuration/kubernetes-crd-definition-v1.yml || echo "Traefik CRDs already installed"
-
-          echo "Verifying Traefik is running..."
-          kubectl get pods -n traefik || echo "Traefik namespace not found - assuming Traefik is already deployed"
+            CREATE INDEX IF NOT EXISTS idx_mirror_words_original ON mirror_words(original_word);"
 
       - name: Deploy Application with Helm
         run: |
@@ -202,7 +208,6 @@ jobs:
           echo "External IP: $EXTERNAL_IP"
 
           echo "Testing health endpoint..."
-          sleep 30
           curl -f http://$EXTERNAL_IP/api/health || echo "Health check pending..."
 
           echo "Testing mirror endpoint..."

@@ -5,7 +5,7 @@ namespace: mirror-app
 image:
   repository: alaric1.azurecr.io/mirror-app
   tag: latest
-  pullPolicy: Always
+  pullPolicy: IfNotPresent
 
 replicaCount: 2
 
