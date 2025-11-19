@@ -491,55 +491,6 @@ kubectl get hpa -n mirror-app
 
 ---
 
-## Troubleshooting
-
-### Issue: Pipeline fails at Deploy stage
-
-**Check:**
-```bash
-# Verify service connection has permissions
-az aks list -o table
-
-# Verify variable group
-# Azure DevOps → Library → app-variables
-```
-
-### Issue: Pods not starting
-
-```bash
-# Check pod status
-kubectl describe pod <pod-name> -n mirror-app
-
-# Check logs
-kubectl logs <pod-name> -n mirror-app
-
-# Common issues:
-# - ImagePullBackOff: ACR authentication issue
-# - CrashLoopBackOff: Application error
-```
-
-### Issue: Can't pull image from ACR
-
-```bash
-# Verify ACR integration
-az aks check-acr \
-  --name aks-dev-devops \
-  --resource-group rg-devops-assessment \
-  --acr <your-acr-name>.azurecr.io
-```
-
-### Issue: Database not ready
-
-```bash
-# Check CNPG cluster
-kubectl get cluster -n mirror-app
-
-# Check operator logs
-kubectl logs -n cnpg-system deployment/cnpg-controller-manager
-```
-
----
-
 ## Cleanup (When Done)
 
 ### Option 1: Terraform Destroy
@@ -561,37 +512,6 @@ az group delete --name rg-terraform-state --yes
 az group delete --name rg-devops-assessment --yes --no-wait
 az group delete --name rg-terraform-state --yes --no-wait
 ```
-
----
-
-## Quick Reference
-
-### Essential Commands
-
-```bash
-# View all resources
-kubectl get all -n mirror-app
-
-# View logs
-kubectl logs -n mirror-app deployment/mirror-app --tail=50 -f
-
-# Restart deployment
-kubectl rollout restart deployment/mirror-app -n mirror-app
-
-# Check database
-kubectl exec -it mirror-db-1 -n mirror-app -- psql -U app -d mirrordb
-
-# Get external IP
-kubectl get svc -n traefik traefik
-```
-
-### URLs to Keep Handy
-
-- **Azure Portal:** https://portal.azure.com
-- **Azure DevOps:** https://dev.azure.com/<your-org>
-- **Your API:** http://<EXTERNAL_IP>/api/health
-
----
 
 **Total Time:** ~45-60 minutes (first time)
 **Subsequent deployments:** 12-15 minutes (automatic)

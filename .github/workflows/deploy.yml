@@ -136,10 +136,13 @@ jobs:
           echo "Installing CloudNativePG operator..."
           kubectl apply -f https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.21/releases/cnpg-1.21.0.yaml || echo "CNPG operator already installed"
 
+      - name: Create Namespace
+        run: |
+          kubectl create namespace ${{ env.NAMESPACE }} --dry-run=client -o yaml | kubectl apply -f -
+
       - name: Deploy Database (CNPG)
         run: |
           echo "Deploying PostgreSQL cluster..."
-          kubectl apply -f k8s/00-namespace.yaml
           kubectl apply -f k8s/cnpg/02-credentials.yaml
           kubectl apply -f k8s/cnpg/01-postgres-cluster.yaml
           kubectl apply -f k8s/cnpg/03-scheduled-backup.yaml
@@ -173,14 +176,14 @@ jobs:
           echo "Verifying Traefik is running..."
           kubectl get pods -n traefik || echo "Traefik namespace not found - assuming Traefik is already deployed"
 
-      - name: Deploy Application
+      - name: Deploy Application with Helm
         run: |
-          echo "Deploying application..."
-          kubectl apply -f k8s/01-secrets.yaml
-          kubectl apply -f k8s/02-deployment.yaml
-          kubectl apply -f k8s/03-service.yaml
-          kubectl apply -f k8s/04-ingressroute.yaml
-          kubectl apply -f k8s/05-hpa.yaml
+          echo "Deploying application with Helm..."
+          helm upgrade --install mirror-app ./helm/mirror-app \
+            --set image.tag=${{ github.sha }} \
+            --namespace ${{ env.NAMESPACE }} \
+            --wait \
+            --timeout 5m
 
       - name: Wait for Deployment
         run: |

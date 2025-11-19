@@ -1,0 +1,45 @@
+# Default values for mirror-app
+
+namespace: mirror-app
+
+image:
+  repository: alaric1.azurecr.io/mirror-app
+  tag: latest
+  pullPolicy: Always
+
+replicaCount: 2
+
+service:
+  type: ClusterIP
+  port: 4004
+
+ingress:
+  enabled: true
+  className: traefik
+  entryPoints:
+    - web
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 80
+
+database:
+  host: mirror-db-rw
+  port: 5432
+  name: mirrordb
+  user: app
+  password: AppUser_SecurePassword123!
+
+env:
+  port: "4004"

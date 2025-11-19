@@ -1,0 +1,18 @@
+{{- if .Values.ingress.enabled }}
+apiVersion: traefik.containo.us/v1alpha1
+kind: IngressRoute
+metadata:
+  name: mirror-app-http
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: mirror-app
+spec:
+  entryPoints:
+    {{- toYaml .Values.ingress.entryPoints | nindent 4 }}
+  routes:
+  - match: PathPrefix(`/`)
+    kind: Rule
+    services:
+    - name: mirror-app
+      port: {{ .Values.service.port }}
+{{- end }}
