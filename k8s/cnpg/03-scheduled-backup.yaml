@@ -1,0 +1,38 @@
+# Scheduled Backup for CloudNativePG
+# Automates PostgreSQL backups on a schedule
+
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: mirror-db-backup-schedule
+  namespace: mirror-app
+  labels:
+    app: mirror-db
+spec:
+  # Schedule: Daily at 2:00 AM UTC
+  schedule: "0 2 * * *"
+  
+  # Backup retention
+  backupOwnerReference: self
+  
+  # Target cluster
+  cluster:
+    name: mirror-db
+  
+  # Immediate backup (optional - set to true to trigger immediately)
+  immediate: false
+  
+  # Suspend backups (set to true to pause)
+  suspend: false
+
+---
+# Manual backup (one-time)
+# Uncomment and apply to trigger a manual backup
+# apiVersion: postgresql.cnpg.io/v1
+# kind: Backup
+# metadata:
+#   name: mirror-db-backup-manual
+#   namespace: mirror-app
+# spec:
+#   cluster:
+#     name: mirror-db

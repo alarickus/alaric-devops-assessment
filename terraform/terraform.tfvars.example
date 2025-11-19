@@ -1,0 +1,33 @@
+# Terraform Variables Configuration
+# Copy this file to terraform.tfvars and update the values
+
+# Resource Group Configuration
+resource_group_name = "rg-devops-assessment"
+location           = "eastus"
+environment        = "prod"
+
+# Container Registry (must be globally unique)
+acr_name = "acrdevopsassessment001"  # CHANGE THIS - must be unique across Azure
+
+# AKS Configuration
+enable_aks      = true
+aks_node_count  = 2
+aks_node_size   = "Standard_B2s"  # Burstable - cost-effective for this workload
+
+# VM Configuration (alternative to AKS - not recommended for this assessment)
+enable_vm        = false
+
+# Additional Tags
+tags = {
+  Project     = "DevOps-Assessment"
+  ManagedBy   = "Terraform"
+  Environment = "prod"
+  Database    = "CloudNativePG"
+}
+
+# Notes:
+# 1. ACR name must be globally unique (3-50 alphanumeric characters)
+# 2. Database (PostgreSQL) runs inside AKS using CloudNativePG operator
+# 3. No external database configuration needed!
+# 4. Database credentials are managed in Kubernetes secrets (k8s/cnpg/02-credentials.yaml)
+# 5. Cost savings: ~$22/month vs Azure PostgreSQL Flexible Server

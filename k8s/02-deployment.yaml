@@ -1,0 +1,114 @@
+# Deployment for Mirror API
+# Lightweight: 1 replica, 256MB memory, 250m CPU
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mirror-app
+  namespace: mirror-app
+  labels:
+    app: mirror-app
+    version: v1
+spec:
+  replicas: 1  # Lightweight: single replica
+  selector:
+    matchLabels:
+      app: mirror-app
+  template:
+    metadata:
+      labels:
+        app: mirror-app
+        version: v1
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "4004"
+        prometheus.io/path: "/metrics"
+    spec:
+      # Security context
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      
+      # Image pull secrets (if using private registry)
+      # imagePullSecrets:
+      #   - name: acr-secret
+      
+      containers:
+      - name: mirror-app
+        image: <your-acr>.azurecr.io/mirror-app:latest  # CHANGE THIS
+        imagePullPolicy: IfNotPresent
+        
+        ports:
+        - name: http
+          containerPort: 4004
+          protocol: TCP
+        
+        # Environment variables
+        env:
+        - name: PORT
+          value: "4004"
+        - name: FLASK_ENV
+          value: "production"
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: db-secret
+              key: database-url
+        # CNPG provides these service endpoints:
+        # - mirror-db-rw: Read-Write (primary) ← We use this
+        # - mirror-db-ro: Read-Only (replicas)
+        # - mirror-db-r: Read (all instances)
+        
+        # Resource limits - LIGHTWEIGHT!
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "250m"
+        
+        # Liveness probe
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: 4004
+            scheme: HTTP
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          timeoutSeconds: 3
+          successThreshold: 1
+          failureThreshold: 3
+        
+        # Readiness probe
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: 4004
+            scheme: HTTP
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 2
+          successThreshold: 1
+          failureThreshold: 3
+        
+        # Security context
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+          runAsNonRoot: true
+          runAsUser: 1000
+          capabilities:
+            drop:
+            - ALL
+      
+      # Restart policy
+      restartPolicy: Always
+      
+      # DNS policy
+      dnsPolicy: ClusterFirst
+      
+      # Termination grace period
+      terminationGracePeriodSeconds: 30

@@ -1,0 +1,8 @@
+# Namespace for Mirror API
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mirror-app
+  labels:
+    name: mirror-app
+    app: mirror-app

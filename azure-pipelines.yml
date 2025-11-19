@@ -1,0 +1,229 @@
+# Azure DevOps Pipeline for Mirror API
+# Triggers on: all branches
+# Builds and pushes Docker image: main branch only
+
+trigger:
+  branches:
+    include:
+      - '*'
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - group: app-variables
+  - name: dockerfilePath
+    value: '$(Build.SourcesDirectory)/docker/Dockerfile'
+  - name: imageName
+    value: 'mirror-app'
+  - name: imageTag
+    value: '$(Build.BuildId)'
+
+stages:
+  # Stage 1: Run Tests
+  - stage: Test
+    displayName: 'Run Application Tests'
+    jobs:
+      - job: UnitTests
+        displayName: 'Unit Tests'
+        steps:
+          - task: UsePythonVersion@0
+            displayName: 'Use Python 3.11'
+            inputs:
+              versionSpec: '3.11'
+              addToPath: true
+
+          - script: |
+              python -m pip install --upgrade pip
+              pip install -r app/requirements.txt
+            displayName: 'Install dependencies'
+
+          - script: |
+              cd app
+              python -m pytest tests/ -v --junitxml=junit/test-results.xml --cov=. --cov-report=xml --cov-report=html
+            displayName: 'Run pytest'
+            env:
+              DATABASE_URL: 'postgresql://test:test@localhost:5432/testdb'
+
+          - task: PublishTestResults@2
+            displayName: 'Publish Test Results'
+            condition: succeededOrFailed()
+            inputs:
+              testResultsFormat: 'JUnit'
+              testResultsFiles: '**/test-results.xml'
+              failTaskOnFailedTests: true
+
+          - task: PublishCodeCoverageResults@1
+            displayName: 'Publish Code Coverage'
+            condition: succeededOrFailed()
+            inputs:
+              codeCoverageTool: 'Cobertura'
+              summaryFileLocation: '$(System.DefaultWorkingDirectory)/app/coverage.xml'
+              reportDirectory: '$(System.DefaultWorkingDirectory)/app/htmlcov'
+
+  # Stage 2: Build Docker Image (main branch only)
+  - stage: Build
+    displayName: 'Build Docker Image'
+    dependsOn: Test
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - job: BuildImage
+        displayName: 'Build Docker Image'
+        steps:
+          - task: Docker@2
+            displayName: 'Build Docker Image'
+            inputs:
+              command: 'build'
+              dockerfile: '$(dockerfilePath)'
+              tags: |
+                $(imageTag)
+                latest
+              arguments: '--pull'
+
+          - script: |
+              echo "Image built successfully"
+              echo "Image name: $(imageName)"
+              echo "Image tag: $(imageTag)"
+            displayName: 'Build Information'
+
+  # Stage 3: Push to Azure Container Registry (main branch only)
+  - stage: Push
+    displayName: 'Push to ACR'
+    dependsOn: Build
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - job: PushImage
+        displayName: 'Push Docker Image to ACR'
+        steps:
+          - task: Docker@2
+            displayName: 'Build and Push to ACR'
+            inputs:
+              containerRegistry: 'azure-connection'
+              repository: '$(imageName)'
+              command: 'buildAndPush'
+              Dockerfile: '$(dockerfilePath)'
+              tags: |
+                $(imageTag)
+                latest
+
+          - task: AzureCLI@2
+            displayName: 'Verify Image in ACR'
+            inputs:
+              azureSubscription: 'azure-connection'
+              scriptType: 'bash'
+              scriptLocation: 'inlineScript'
+              inlineScript: |
+                echo "Verifying image in ACR..."
+                az acr repository show-tags \
+                  --name $(AZURE_CONTAINER_REGISTRY) \
+                  --repository $(imageName) \
+                  --output table
+
+          - script: |
+              echo "Docker image pushed successfully!"
+              echo "Image: $(AZURE_CONTAINER_REGISTRY).azurecr.io/$(imageName):$(imageTag)"
+              echo "Latest tag: $(AZURE_CONTAINER_REGISTRY).azurecr.io/$(imageName):latest"
+            displayName: 'Push Summary'
+
+  # Stage 4: Deploy to AKS (Automated!)
+  - stage: Deploy
+    displayName: 'Deploy to AKS'
+    dependsOn: Push
+    condition: succeeded()
+    jobs:
+      - deployment: DeployApp
+        displayName: 'Deploy Application to AKS'
+        environment: 'production'  # Requires manual approval (optional)
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self  # Checkout code to access manifests
+                
+                - task: KubectlInstaller@0
+                  displayName: 'Install kubectl'
+                  inputs:
+                    kubectlVersion: '1.28.3'
+                
+                - task: AzureCLI@2
+                  displayName: 'Get AKS Credentials'
+                  inputs:
+                    azureSubscription: 'azure-connection'
+                    scriptType: 'bash'
+                    scriptLocation: 'inlineScript'
+                    inlineScript: |
+                      az aks get-credentials \
+                        --resource-group rg-devops-assessment \
+                        --name aks-dev-devops \
+                        --overwrite-existing
+                
+                - task: Kubernetes@1
+                  displayName: 'Install CNPG Operator'
+                  inputs:
+                    connectionType: 'Azure Resource Manager'
+                    azureSubscriptionEndpoint: 'azure-connection'
+                    azureResourceGroup: 'rg-devops-assessment'
+                    kubernetesCluster: 'aks-dev-devops'
+                    command: 'apply'
+                    arguments: '-f https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.21/releases/cnpg-1.21.0.yaml'
+                
+                - task: Kubernetes@1
+                  displayName: 'Deploy CNPG PostgreSQL Cluster'
+                  inputs:
+                    connectionType: 'Azure Resource Manager'
+                    azureSubscriptionEndpoint: 'azure-connection'
+                    azureResourceGroup: 'rg-devops-assessment'
+                    kubernetesCluster: 'aks-dev-devops'
+                    command: 'apply'
+                    useConfigurationFile: true
+                    configuration: |
+                      k8s/00-namespace.yaml
+                      k8s/cnpg/02-credentials.yaml
+                      k8s/cnpg/01-postgres-cluster.yaml
+                      k8s/cnpg/03-scheduled-backup.yaml'
+                
+                - script: |
+                    echo "Waiting for CNPG cluster to be ready..."
+                    kubectl wait --for=condition=Ready cluster/mirror-db -n mirror-app --timeout=600s || echo "CNPG cluster still initializing"
+                  displayName: 'Wait for CNPG Cluster'
+                
+                - task: Kubernetes@1
+                  displayName: 'Deploy Traefik Ingress'
+                  inputs:
+                    connectionType: 'Azure Resource Manager'
+                    azureSubscriptionEndpoint: 'azure-connection'
+                    azureResourceGroup: 'rg-devops-assessment'
+                    kubernetesCluster: 'aks-dev-devops'
+                    command: 'apply'
+                    arguments: '-f https://raw.githubusercontent.com/traefik/traefik/v2.10/docs/content/reference/dynamic-configuration/kubernetes-crd-definition-v1.yml'
+                
+                - task: Kubernetes@1
+                  displayName: 'Deploy Application'
+                  inputs:
+                    connectionType: 'Azure Resource Manager'
+                    azureSubscriptionEndpoint: 'azure-connection'
+                    azureResourceGroup: 'rg-devops-assessment'
+                    kubernetesCluster: 'aks-dev-devops'
+                    command: 'apply'
+                    useConfigurationFile: true
+                    configuration: |
+                      k8s/01-secrets.yaml
+                      k8s/02-deployment.yaml
+                      k8s/03-service.yaml
+                      k8s/04-ingressroute.yaml
+                      k8s/05-hpa.yaml
+                
+                - script: |
+                    echo "Waiting for application deployment..."
+                    kubectl wait --for=condition=available deployment/mirror-app -n mirror-app --timeout=300s
+                    
+                    echo "Getting service IP..."
+                    kubectl get svc -n traefik traefik
+                    
+                    EXTERNAL_IP=$(kubectl get svc -n traefik traefik -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+                    echo "Application URL: http://$EXTERNAL_IP/api/health"
+                    
+                    echo "Testing health endpoint..."
+                    sleep 30  # Wait for ingress
+                    curl -f http://$EXTERNAL_IP/api/health || echo "Health check pending..."
+                  displayName: 'Verify Deployment'

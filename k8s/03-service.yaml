@@ -1,0 +1,17 @@
+# Service for Mirror API
+apiVersion: v1
+kind: Service
+metadata:
+  name: mirror-app
+  namespace: mirror-app
+  labels:
+    app: mirror-app
+spec:
+  type: ClusterIP
+  ports:
+  - port: 4004
+    targetPort: http
+    protocol: TCP
+    name: http
+  selector:
+    app: mirror-app
