@@ -1,5 +1,5 @@
 # Traefik IngressRoute for Mirror API
-# Provides auto-SSL with Let's Encrypt
+# Simple configuration that matches any request (for testing/demo)
 apiVersion: traefik.containo.us/v1alpha1
 kind: IngressRoute
 metadata:
@@ -11,63 +11,8 @@ spec:
   entryPoints:
     - web  # HTTP (port 80)
   routes:
-  - match: Host(`mirror-app.example.com`)  # CHANGE THIS to your domain
+  - match: PathPrefix(`/`)  # Match any path for testing
     kind: Rule
     services:
     - name: mirror-app
       port: 4004
-    # Redirect HTTP to HTTPS
-    middlewares:
-    - name: redirect-to-https
-      namespace: mirror-app
-
----
-# HTTPS IngressRoute with TLS
-apiVersion: traefik.containo.us/v1alpha1
-kind: IngressRoute
-metadata:
-  name: mirror-app-https
-  namespace: mirror-app
-  labels:
-    app: mirror-app
-spec:
-  entryPoints:
-    - websecure  # HTTPS (port 443)
-  routes:
-  - match: Host(`mirror-app.example.com`)  # CHANGE THIS to your domain
-    kind: Rule
-    services:
-    - name: mirror-app
-      port: 4004
-  tls:
-    certResolver: letsencrypt  # Auto-SSL with Let's Encrypt!
-
----
-# Middleware for HTTP to HTTPS redirect
-apiVersion: traefik.containo.us/v1alpha1
-kind: Middleware
-metadata:
-  name: redirect-to-https
-  namespace: mirror-app
-spec:
-  redirectScheme:
-    scheme: https
-    permanent: true
-
----
-# Alternative: Simple Ingress (without TLS for testing)
-# Uncomment if you want to test without SSL first
-# apiVersion: traefik.containo.us/v1alpha1
-# kind: IngressRoute
-# metadata:
-#   name: mirror-app-simple
-#   namespace: mirror-app
-# spec:
-#   entryPoints:
-#     - web
-#   routes:
-#   - match: Host(`mirror-app.local`) || PathPrefix(`/`)
-#     kind: Rule
-#     services:
-#     - name: mirror-app
-#       port: 4004

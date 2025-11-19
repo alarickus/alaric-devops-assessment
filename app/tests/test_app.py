@@ -65,7 +65,7 @@ class TestMirrorTransformation:
     def test_transform_special_characters(self):
         """Test transformation with special characters"""
         result = transform_word('Hello-World!')
-        assert result == '!DLROw-oLLEh'
+        assert result == '!DLROw-OLLEh'
     
     def test_transform_empty_string(self):
         """Test transformation of empty string"""
@@ -194,9 +194,9 @@ class TestComprehensiveCases:
         ('fOoBar25', '52RAbOoF'),
         ('ABC', 'cba'),
         ('a1B2c3', '3C2b1A'),
-        ('Hello World', 'DLROW oLLEh'),
+        ('Hello World', 'DLROw OLLEh'),
         ('123', '321'),
-        ('!@#', '!@#'),
+        ('!@#', '#@!'),
     ])
     def test_transformation_cases(self, input_word, expected_output):
         """Test multiple transformation cases"""

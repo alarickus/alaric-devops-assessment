@@ -27,21 +27,24 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq5 \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy Python dependencies from builder
-COPY --from=builder /root/.local /root/.local
+# Create non-root user for security first
+RUN useradd -m -u 1000 appuser
+
+# Copy Python dependencies from builder to appuser's home
+COPY --from=builder /root/.local /home/appuser/.local
 
 # Copy application code
 COPY app/ .
 
-# Make sure scripts are in PATH
-ENV PATH=/root/.local/bin:$PATH
+# Change ownership to appuser
+RUN chown -R appuser:appuser /app /home/appuser/.local
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV PORT=4004
+ENV PATH=/home/appuser/.local/bin:$PATH
 
-# Create non-root user for security
-RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+# Switch to non-root user
 USER appuser
 
 # Expose port

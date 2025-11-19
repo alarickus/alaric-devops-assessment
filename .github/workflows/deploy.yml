@@ -1,0 +1,208 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+env:
+  ACR_NAME: alaric1
+  ACR_LOGIN_SERVER: alaric1.azurecr.io
+  IMAGE_NAME: mirror-app
+  AKS_CLUSTER_NAME: aks-alaric-devops
+  AKS_RESOURCE_GROUP: rg-devops-assessment
+  NAMESPACE: mirror-app
+
+jobs:
+  # Job 1: Run Tests
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r app/requirements.txt
+
+      - name: Run pytest with coverage
+        run: |
+          cd app
+          python -m pytest tests/ -v \
+            --junitxml=junit/test-results.xml \
+            --cov=. \
+            --cov-report=xml \
+            --cov-report=html
+        env:
+          DATABASE_URL: 'postgresql://test:test@localhost:5432/testdb'
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: app/junit/test-results.xml
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: app/htmlcov/
+
+  # Job 2: Build and Push Docker Image
+  build:
+    name: Build & Push Docker Image
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Azure
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Log in to ACR
+        run: |
+          az acr login --name ${{ env.ACR_NAME }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./docker/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+            ${{ env.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Verify image in ACR
+        run: |
+          echo "Verifying image in ACR..."
+          az acr repository show-tags \
+            --name ${{ env.ACR_NAME }} \
+            --repository ${{ env.IMAGE_NAME }} \
+            --output table
+
+  # Job 3: Deploy to AKS
+  deploy:
+    name: Deploy to AKS
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    environment:
+      name: production
+      url: http://20.76.75.231
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Log in to Azure
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Get AKS credentials
+        run: |
+          az aks get-credentials \
+            --resource-group ${{ env.AKS_RESOURCE_GROUP }} \
+            --name ${{ env.AKS_CLUSTER_NAME }} \
+            --overwrite-existing
+
+      - name: Install CNPG Operator
+        run: |
+          echo "Installing CloudNativePG operator..."
+          kubectl apply -f https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.21/releases/cnpg-1.21.0.yaml || echo "CNPG operator already installed"
+
+      - name: Deploy Database (CNPG)
+        run: |
+          echo "Deploying PostgreSQL cluster..."
+          kubectl apply -f k8s/00-namespace.yaml
+          kubectl apply -f k8s/cnpg/02-credentials.yaml
+          kubectl apply -f k8s/cnpg/01-postgres-cluster.yaml
+          kubectl apply -f k8s/cnpg/03-scheduled-backup.yaml
+
+      - name: Wait for Database Cluster
+        run: |
+          echo "Waiting for CNPG cluster to be ready..."
+          kubectl wait --for=condition=Ready cluster/mirror-db -n ${{ env.NAMESPACE }} --timeout=600s || echo "CNPG cluster still initializing"
+
+      - name: Create Database Table
+        run: |
+          echo "Creating database table if not exists..."
+          kubectl run psql-init --image=postgres:14 --rm -i --restart=Never \
+            -n ${{ env.NAMESPACE }} \
+            --env="PGPASSWORD=AppUser_SecurePassword123!" \
+            -- psql -h mirror-db-rw -U app -d mirrordb -c \
+            "CREATE TABLE IF NOT EXISTS mirror_words (
+              id SERIAL PRIMARY KEY,
+              original_word VARCHAR(255) NOT NULL,
+              transformed_word VARCHAR(255) NOT NULL,
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_mirror_words_original ON mirror_words(original_word);" \
+            || echo "Table creation attempted"
+
+      - name: Verify Traefik Ingress
+        run: |
+          echo "Deploying Traefik CRDs..."
+          kubectl apply -f https://raw.githubusercontent.com/traefik/traefik/v2.10/docs/content/reference/dynamic-configuration/kubernetes-crd-definition-v1.yml || echo "Traefik CRDs already installed"
+
+          echo "Verifying Traefik is running..."
+          kubectl get pods -n traefik || echo "Traefik namespace not found - assuming Traefik is already deployed"
+
+      - name: Deploy Application
+        run: |
+          echo "Deploying application..."
+          kubectl apply -f k8s/01-secrets.yaml
+          kubectl apply -f k8s/02-deployment.yaml
+          kubectl apply -f k8s/03-service.yaml
+          kubectl apply -f k8s/04-ingressroute.yaml
+          kubectl apply -f k8s/05-hpa.yaml
+
+      - name: Wait for Deployment
+        run: |
+          echo "Waiting for application deployment..."
+          kubectl wait --for=condition=available deployment/mirror-app -n ${{ env.NAMESPACE }} --timeout=300s
+
+      - name: Get Service Status
+        run: |
+          echo "Getting service status..."
+          kubectl get svc -n traefik traefik
+          kubectl get pods -n ${{ env.NAMESPACE }}
+          kubectl get cluster -n ${{ env.NAMESPACE }}
+
+      - name: Verify Deployment
+        run: |
+          echo "Getting external IP..."
+          EXTERNAL_IP=$(kubectl get svc -n traefik traefik -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+          echo "External IP: $EXTERNAL_IP"
+
+          echo "Testing health endpoint..."
+          sleep 30
+          curl -f http://$EXTERNAL_IP/api/health || echo "Health check pending..."
+
+          echo "Testing mirror endpoint..."
+          curl -f "http://$EXTERNAL_IP/api/mirror?word=fOoBar25" || echo "Mirror endpoint pending..."

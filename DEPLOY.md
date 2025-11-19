@@ -593,38 +593,5 @@ kubectl get svc -n traefik traefik
 
 ---
 
-## Cost Estimate
-
-**Running costs:**
-- AKS: ~$62/month (2× Standard_B2s nodes)
-- Storage: ~$5/month (disks + backups)
-- Network: ~$5/month (load balancer)
-- **Total: ~$72/month (~$17/week)**
-
-**💡 Tip:** Delete resources when not in use to save costs!
-
----
-
-## Success Checklist
-
-✅ Azure subscription set up
-✅ Service principal created
-✅ Terraform backend created
-✅ Infrastructure deployed (terraform apply)
-✅ kubectl connected to AKS
-✅ Code pushed to Azure DevOps
-✅ Service connection created (`azure-connection`)
-✅ Variable group created (`app-variables`)
-✅ Pipeline created and run
-✅ All 4 pipeline stages passed
-✅ Pods running in AKS
-✅ External IP assigned
-✅ API endpoints responding
-✅ Database persisting data
-
-**If all checked ✅ - YOU'RE DONE!** 🎉
-
----
-
 **Total Time:** ~45-60 minutes (first time)
 **Subsequent deployments:** 12-15 minutes (automatic)

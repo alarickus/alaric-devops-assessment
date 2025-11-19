@@ -96,15 +96,34 @@ stages:
         displayName: 'Push Docker Image to ACR'
         steps:
           - task: Docker@2
-            displayName: 'Build and Push to ACR'
+            displayName: 'Build Docker Image'
             inputs:
-              containerRegistry: 'azure-connection'
+              command: 'build'
               repository: '$(imageName)'
-              command: 'buildAndPush'
               Dockerfile: '$(dockerfilePath)'
               tags: |
                 $(imageTag)
                 latest
+
+          - task: AzureCLI@2
+            displayName: 'Login to ACR and Push Image'
+            inputs:
+              azureSubscription: 'azure-connection'
+              scriptType: 'bash'
+              scriptLocation: 'inlineScript'
+              inlineScript: |
+                echo "Logging into ACR..."
+                az acr login --name $(AZURE_CONTAINER_REGISTRY)
+
+                echo "Tagging images..."
+                docker tag $(imageName):$(imageTag) $(AZURE_CONTAINER_REGISTRY).azurecr.io/$(imageName):$(imageTag)
+                docker tag $(imageName):$(imageTag) $(AZURE_CONTAINER_REGISTRY).azurecr.io/$(imageName):latest
+
+                echo "Pushing images to ACR..."
+                docker push $(AZURE_CONTAINER_REGISTRY).azurecr.io/$(imageName):$(imageTag)
+                docker push $(AZURE_CONTAINER_REGISTRY).azurecr.io/$(imageName):latest
+
+                echo "Push completed successfully!"
 
           - task: AzureCLI@2
             displayName: 'Verify Image in ACR'
@@ -143,7 +162,7 @@ stages:
                 - task: KubectlInstaller@0
                   displayName: 'Install kubectl'
                   inputs:
-                    kubectlVersion: '1.28.3'
+                    kubectlVersion: '1.32.9'
                 
                 - task: AzureCLI@2
                   displayName: 'Get AKS Credentials'
@@ -154,7 +173,7 @@ stages:
                     inlineScript: |
                       az aks get-credentials \
                         --resource-group rg-devops-assessment \
-                        --name aks-dev-devops \
+                        --name aks-alaric-devops \
                         --overwrite-existing
                 
                 - task: Kubernetes@1
@@ -163,7 +182,7 @@ stages:
                     connectionType: 'Azure Resource Manager'
                     azureSubscriptionEndpoint: 'azure-connection'
                     azureResourceGroup: 'rg-devops-assessment'
-                    kubernetesCluster: 'aks-dev-devops'
+                    kubernetesCluster: 'aks-alaric-devops'
                     command: 'apply'
                     arguments: '-f https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.21/releases/cnpg-1.21.0.yaml'
                 
@@ -173,14 +192,14 @@ stages:
                     connectionType: 'Azure Resource Manager'
                     azureSubscriptionEndpoint: 'azure-connection'
                     azureResourceGroup: 'rg-devops-assessment'
-                    kubernetesCluster: 'aks-dev-devops'
+                    kubernetesCluster: 'aks-alaric-devops'
                     command: 'apply'
                     useConfigurationFile: true
                     configuration: |
                       k8s/00-namespace.yaml
                       k8s/cnpg/02-credentials.yaml
                       k8s/cnpg/01-postgres-cluster.yaml
-                      k8s/cnpg/03-scheduled-backup.yaml'
+                      k8s/cnpg/03-scheduled-backup.yaml
                 
                 - script: |
                     echo "Waiting for CNPG cluster to be ready..."
@@ -193,7 +212,7 @@ stages:
                     connectionType: 'Azure Resource Manager'
                     azureSubscriptionEndpoint: 'azure-connection'
                     azureResourceGroup: 'rg-devops-assessment'
-                    kubernetesCluster: 'aks-dev-devops'
+                    kubernetesCluster: 'aks-alaric-devops'
                     command: 'apply'
                     arguments: '-f https://raw.githubusercontent.com/traefik/traefik/v2.10/docs/content/reference/dynamic-configuration/kubernetes-crd-definition-v1.yml'
                 
@@ -203,7 +222,7 @@ stages:
                     connectionType: 'Azure Resource Manager'
                     azureSubscriptionEndpoint: 'azure-connection'
                     azureResourceGroup: 'rg-devops-assessment'
-                    kubernetesCluster: 'aks-dev-devops'
+                    kubernetesCluster: 'aks-alaric-devops'
                     command: 'apply'
                     useConfigurationFile: true
                     configuration: |

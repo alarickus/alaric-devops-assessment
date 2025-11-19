@@ -67,27 +67,22 @@ spec:
   primaryUpdateStrategy: unsupervised
   maxSyncReplicas: 1  # Only 1 replica total
   minSyncReplicas: 0  # Allow async for better performance
-  
-  # Pod Anti-Affinity - spread pods across nodes
-  affinity:
-    podAntiAffinityPreset: required
-    topologyKey: kubernetes.io/hostname
-  
-  # Backup configuration (using Azure Blob Storage)
-  backup:
-    barmanObjectStore:
-      destinationPath: "https://<storage-account>.blob.core.windows.net/<container>/mirror-db"
-      azureCredentials:
-        storageAccount:
-          name: azure-backup-creds
-          key: storage-account
-        storageKey:
-          name: azure-backup-creds
-          key: storage-key
-      wal:
-        compression: gzip
-        maxParallel: 2
-    retentionPolicy: "30d"
+
+  # Backup configuration - commented out for initial deployment
+  # backup:
+  #   barmanObjectStore:
+  #     destinationPath: "https://<storage-account>.blob.core.windows.net/<container>/mirror-db"
+  #     azureCredentials:
+  #       storageAccount:
+  #         name: azure-backup-creds
+  #         key: storage-account
+  #       storageKey:
+  #         name: azure-backup-creds
+  #         key: storage-key
+  #     wal:
+  #       compression: gzip
+  #       maxParallel: 2
+  #   retentionPolicy: "30d"
   
   # Superuser secret (for admin access)
   superuserSecret:
@@ -97,13 +92,13 @@ spec:
   # postgresql:
   #   parameters:
   #     wal_level: "logical"
-  
-  # Certificates (TLS)
-  certificates:
-    serverTLSSecret: mirror-db-server-cert
-    serverCASecret: mirror-db-ca-cert
-    clientCASecret: mirror-db-ca-cert
-    replicationTLSSecret: mirror-db-replication-cert
+
+  # Certificates (TLS) - commented out, CNPG will auto-generate
+  # certificates:
+  #   serverTLSSecret: mirror-db-server-cert
+  #   serverCASecret: mirror-db-ca-cert
+  #   clientCASecret: mirror-db-ca-cert
+  #   replicationTLSSecret: mirror-db-replication-cert
 
 ---
 # Service for read-write connections (primary)

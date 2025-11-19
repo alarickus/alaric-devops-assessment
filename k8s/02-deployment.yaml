@@ -37,8 +37,8 @@ spec:
       
       containers:
       - name: mirror-app
-        image: <your-acr>.azurecr.io/mirror-app:latest  # CHANGE THIS
-        imagePullPolicy: IfNotPresent
+        image: alaric1.azurecr.io/mirror-app:latest
+        imagePullPolicy: Always
         
         ports:
         - name: http
