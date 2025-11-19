@@ -181,14 +181,12 @@ jobs:
           echo "Deploying application with Helm..."
           helm upgrade --install mirror-app ./helm/mirror-app \
             --set image.tag=${{ github.sha }} \
-            --namespace ${{ env.NAMESPACE }} \
-            --wait \
-            --timeout 10m
+            --namespace ${{ env.NAMESPACE }}
 
       - name: Wait for Deployment
         run: |
-          echo "Waiting for application deployment..."
-          kubectl wait --for=condition=available deployment/mirror-app -n ${{ env.NAMESPACE }} --timeout=300s
+          echo "Waiting for pods to be ready..."
+          kubectl rollout status deployment/mirror-app -n ${{ env.NAMESPACE }} --timeout=300s
 
       - name: Get Service Status
         run: |
